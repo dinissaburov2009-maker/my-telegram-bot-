@@ -611,7 +611,27 @@ async def top_cmd(msg: types.Message):
         text += f"{medal} **{p.get('name', 'Игрок')}** — {p.get('wins', 0)} побед, {p.get('coins', 0)} 💰\n"
 
     await msg.answer(text, parse_mode="Markdown")
+    @dp.message(Command("promo"))
+async def promo_cmd(msg: types.Message):
+        p = get_player(msg.from_user.id, msg.from_user.first_name or "Игрок")
+    args = msg.text.split(maxsplit=1)
 
+    if len(args) < 2:
+        await msg.answer("❌ Использование: /promo КОД")
+        return
+
+    code = args[1].strip().lower()
+
+    if code == "v1gazboss":
+        if p.get("used_promo"):
+            await msg.answer("❌ Ты уже использовал этот промокод.")
+            return
+        p["coins"] += 100000
+        p["used_promo"] = True
+        save_player(msg.from_user.id, p)
+        await msg.answer("🎁 Промокод активирован! Ты получил **100 000 монет**!", parse_mode="Markdown")
+    else:
+        await msg.answer("❌ Неверный промокод.")
 
 # =============================================================
 # /duel — вызов в группе
