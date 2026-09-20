@@ -317,24 +317,24 @@ def check_death(dfn, att):
         att["cur_hp"] -= 6
         lines.append(f"💥 БОМБА ВЗОРВАЛАСЬ! -6 HP врагу!")
         return lines, True
-    # Хронос: 1 раз за бой, смертельный удар бьёт самого обидчика
+
     if dfn["cur_hp"] <= 0 and dfn.get("key") == "хронос" and not dfn.get("chronos_saved"):
-            dfn["chronos_saved"] = True
-            dfn["cur_hp"] = 10
-            back_dmg = random.randint(att["dmg"][0], att["dmg"][1])
-            att["cur_hp"] -= back_dmg
-            lines.append(f"⏳ ХРОНОС ОТМОТАЛ ВРЕМЯ! Удар ушёл в {att['title']} (−{back_dmg} HP), Хронос с 10 HP!")
+        dfn["chronos_saved"] = True
+        dfn["cur_hp"] = 10
+        back_dmg = random.randint(att["dmg"][0], att["dmg"][1])
+        att["cur_hp"] -= back_dmg
+        lines.append(f"⏳ ХРОНОС ОТМОТАЛ ВРЕМЯ! Удар ушёл в {att['title']} (−{back_dmg} HP), Хронос с 10 HP!")
+        return lines, False
+
+    if dfn["cur_hp"] <= 0 and dfn.get("key") == "гидра":
+        if not dfn.get("hydra_heads"):
+            dfn["hydra_heads"] = 0
+        if dfn["hydra_heads"] < 2:
+            dfn["hydra_heads"] += 1
+            dfn["cur_hp"] = 3
+            lines.append(f"🐍 ГИДРА ОТРАСТИЛА ГОЛОВУ! Жива с 3 HP (голов: {dfn['hydra_heads']}/2)")
             return lines, False
 
-    # Гидра: копит головы, при смерти тратит голову → возрождается с 3 HP
-    if dfn["cur_hp"] <= 0 and dfn.get("key") == "гидра":
-            if not dfn.get("hydra_heads"):
-                    dfn["hydra_heads"] = 0
-            if dfn["hydra_heads"] < 2:
-                    dfn["hydra_heads"] += 1
-                    dfn["cur_hp"] = 3
-                    lines.append(f"🐍 ГИДРА ОТРАСТИЛА ГОЛОВУ! Жива с 3 HP (голов: {dfn['hydra_heads']}/2)")
-                    return lines, False
     return lines, dfn["cur_hp"] <= 0
 
 
