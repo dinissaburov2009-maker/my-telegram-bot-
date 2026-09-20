@@ -1,4 +1,5 @@
 import asyncio
+import os
 import random
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
@@ -6,7 +7,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # -------------------------------------------------------------
 # ВСТАВЬ СВОЙ ТОКЕН МЕЖДУ КАВЫЧКАМИ НИЖЕ:
-TOKEN = "СЮДА_ВСТАВЬ_ТОКЕН_ОТ_BOTFATHER"
+TOKEN = os.environ.get('BOT_TOKEN')
 # -------------------------------------------------------------
 
 # База данных птиц с их пассивками
