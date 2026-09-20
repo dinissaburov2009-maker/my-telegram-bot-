@@ -606,4 +606,276 @@ async def duel_cmd(msg: types.Message):
         await msg.reply("❌ Нельзя вызвать бота!")
         return
 
-    target_p = get_player(t
+       target_p = get_player(target.id, target.first_name or "Игрок")
+    if not target_p.get("chicken"):
+        await msg.reply(f"❌ У {target.first_name} нет петуха.")
+        return
+
+    for duel_id, duel in list(ACTIVE_DUELS.items()):
+        if duel["caller_id"] == caller.id:
+            await msg.reply("❌ У тебя уже есть активный вызов.")
+            return
+
+    DUEL_COUNTER[0] += 1
+    duel_id = DUEL_COUNTER[0]
+    ACTIVE_DUELS[duel_id] = {
+        "caller_id": caller.id,
+        "caller_name": caller.first_name or "Игрок",
+        "target_id": target.id,
+        "target_name": target.first_name or "Игрок",
+        "chat_id": msg.chat.id,
+    }
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Принять", callback_data=f"accept:{duel_id}")
+    kb.button(text="❌ Отказаться", callback_data=f"decline:{duel_id}")
+    kb.button(text="🚫 Отменить вызов", callback_data=f"cancel:{duel_id}")
+    kb.adjust(2, 1)
+
+    duel_msg = await msg.reply(
+        f"⚔️ **{caller.first_name} вызывает {target.first_name} на бой!**\n\n"
+        f"🐔 {caller.first_name}: {BREEDS[caller_p['chicken']]['title']}\n"
+        f"🐔 {target.first_name}: {BREEDS[target_p['chicken']]['title']}\n\n"
+        f"⏳ Вызов снимется автоматически через 2 минуты.",
+        reply_markup=kb.as_markup(),
+        parse_mode="Markdown"
+    )
+
+    ACTIVE_DUELS[duel_id]["msg_id"] = duel_msg.message_id
+
+    task = asyncio.create_task(duel_timeout(duel_id))
+    DUEL_TIMEOUT_TASKS[duel_id] = task
+
+
+async def duel_timeout(duel_id):
+    await asyncio.sleep(120)
+    if duel_id in ACTIVE_DUELS:
+        duel = ACTIVE_DUELS[duel_id]
+        try:
+            await bot.send_message(
+                duel["chat_id"],
+                f"⏰ Вызов между {duel['caller_name']} и {duel['target_name']} снят (истекло время)."
+            )
+        except Exception:
+            pass
+        del ACTIVE_DUELS[duel_id]
+        DUEL_TIMEOUT_TASKS.pop(duel_id, None)
+
+
+@dp.callback_query(lambda c: c.data.startswith("accept:"))
+async def duel_accept(call: types.CallbackQuery):
+    duel_id = int(call.data.split(":")[1])
+    if duel_id not in ACTIVE_DUELS:
+        await call.answer("Вызов уже неактуален.", show_alert=True)
+        return
+
+    duel = ACTIVE_DUELS[duel_id]
+    if call.from_user.id != duel["target_id"]:
+        await call.answer("Это не твой вызов!", show_alert=True)
+        return
+
+    caller_p = get_player(duel["caller_id"], duel["caller_name"])
+    target_p = get_player(duel["target_id"], duel["target_name"])
+
+    if not caller_p.get("chicken"):
+        await call.message.edit_text(f"❌ У {duel['caller_name']} больше нет петуха. Бой отменён.")
+        del ACTIVE_DUELS[duel_id]
+        DUEL_TIMEOUT_TASKS.pop(duel_id, None)
+        await call.answer()
+        return
+
+    if not target_p.get("chicken"):
+        await call.message.edit_text(f"❌ У {duel['target_name']} больше нет петуха. Бой отменён.")
+        del ACTIVE_DUELS[duel_id]
+        DUEL_TIMEOUT_TASKS.pop(duel_id, None)
+        await call.answer()
+        return
+
+    del ACTIVE_DUELS[duel_id]
+    DUEL_TIMEOUT_TASKS.pop(duel_id, None)
+
+    await call.message.edit_text(
+        f"⚔️ **Бой принят!**\n\n"
+        f"🐔 {duel['caller_name']}: {BREEDS[caller_p['chicken']]['title']}\n"
+        f"🐔 {duel['target_name']}: {BREEDS[target_p['chicken']]['title']}\n\n"
+        f"⏳ Бой начинается..."
+    )
+    await call.answer()
+
+    result = await run_pvp_fight(
+        duel["chat_id"],
+        caller_p["chicken"],
+        target_p["chicken"],
+        duel["caller_name"],
+        duel["target_name"],
+    )
+
+    if result == "win_p1":
+        update_stats(duel["caller_id"], duel["caller_name"], "win")
+        update_stats(duel["target_id"], duel["target_name"], "lose")
+    else:
+        update_stats(duel["caller_id"], duel["caller_name"], "lose")
+        update_stats(duel["target_id"], duel["target_name"], "win")
+
+
+@dp.callback_query(lambda c: c.data.startswith("decline:"))
+async def duel_decline(call: types.CallbackQuery):
+    duel_id = int(call.data.split(":")[1])
+    if duel_id not in ACTIVE_DUELS:
+        await call.answer("Вызов уже неактуален.", show_alert=True)
+        return
+
+    duel = ACTIVE_DUELS[duel_id]
+    if call.from_user.id != duel["target_id"]:
+        await call.answer("Это не твой вызов!", show_alert=True)
+        return
+
+    del ACTIVE_DUELS[duel_id]
+    DUEL_TIMEOUT_TASKS.pop(duel_id, None)
+    await call.message.edit_text(f"❌ {duel['target_name']} отказался от боя.")
+    await call.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("cancel:"))
+async def duel_cancel(call: types.CallbackQuery):
+    duel_id = int(call.data.split(":")[1])
+    if duel_id not in ACTIVE_DUELS:
+        await call.answer("Вызов уже неактуален.", show_alert=True)
+        return
+
+    duel = ACTIVE_DUELS[duel_id]
+    if call.from_user.id != duel["caller_id"]:
+        await call.answer("Только вызывающий может отменить вызов!", show_alert=True)
+        return
+
+    del ACTIVE_DUELS[duel_id]
+    DUEL_TIMEOUT_TASKS.pop(duel_id, None)
+    await call.message.edit_text(f"🚫 {duel['caller_name']} отменил вызов.")
+    await call.answer()
+
+
+@dp.callback_query(lambda c: c.data.startswith("fight:"))
+async def fight_action(call: types.CallbackQuery):
+    p = get_player(call.from_user.id, call.from_user.first_name or "Игрок")
+    my_pick = call.data.split(":")[1]
+
+    if p.get("chicken") != my_pick:
+        await call.answer("Это не твой петух!", show_alert=True)
+        return
+
+    enemy_pick = random.choice(list(BREEDS.keys()))
+
+    await call.message.edit_text("⏳ *Бой начинается...*", parse_mode="Markdown")
+
+    b1 = BREEDS[my_pick]
+    b2 = BREEDS[enemy_pick]
+    p1 = {**b1, "key": my_pick, "cur_hp": b1["hp"], "hits": 0,
+          "revived": False, "exploded": False, "bleed": 0, "stunned": 0,
+          "raged": False, "bonus_dmg": 0, "name": "Ты"}
+    p2 = {**b2, "key": enemy_pick, "cur_hp": b2["hp"], "hits": 0,
+          "revived": False, "exploded": False, "bleed": 0, "stunned": 0,
+          "raged": False, "bonus_dmg": 0, "name": "Враг"}
+
+    all_fighters = [p1, p2]
+
+    log_text = (
+        f"⚔️ **БОЙ НАЧАЛСЯ!**\n"
+        f"Твой боец: **{p1['title']}** ({p1['hp']} HP)\n"
+        f"Противник: **{p2['title']}** ({p2['hp']} HP)\n\n"
+    )
+    try:
+        await call.message.edit_text(log_text, parse_mode="Markdown")
+    except Exception:
+        pass
+
+    for _ in range(50):
+        for att, dfn in [(p1, p2), (p2, p1)]:
+            if att["cur_hp"] <= 0 or dfn["cur_hp"] <= 0:
+                continue
+
+            hit_lines = make_hit(att, dfn, all_fighters)
+            log_text += "\n".join(hit_lines) + "\n"
+
+            if random.random() < 0.10 and att["cur_hp"] > 0 and dfn["cur_hp"] > 0:
+                log_text += f"⚡ ДВОЙНОЙ УДАР! {att['title']} бьёт снова!\n"
+                combo_lines = make_hit(att, dfn, all_fighters)
+                log_text += "\n".join(combo_lines) + "\n"
+
+            death_lines, is_dead = check_death(dfn, att)
+            if death_lines:
+                log_text += "\n".join(death_lines) + "\n"
+
+            log_text = trim_log(log_text)
+            try:
+                await call.message.edit_text(log_text, parse_mode="Markdown")
+            except Exception:
+                pass
+            await asyncio.sleep(1.2)
+
+            if is_dead or att["cur_hp"] <= 0 or dfn["cur_hp"] <= 0:
+                break
+
+        if p1["cur_hp"] <= 0 or p2["cur_hp"] <= 0:
+            break
+
+    p1_alive = p1["cur_hp"] > 0
+    p2_alive = p2["cur_hp"] > 0
+
+    if p1_alive and not p2_alive:
+        winner_text = f"🏆 **ПОБЕДИЛ: {p1['title']}!**"
+        result = "win"
+    elif p2_alive and not p1_alive:
+        winner_text = f"🏆 **ПОБЕДИЛ: {p2['title']}!**"
+        result = "lose"
+    else:
+        if p1["cur_hp"] >= p2["cur_hp"]:
+            winner_text = f"🏆 **ПОБЕДИЛ: {p1['title']}!**"
+            result = "win"
+        else:
+            winner_text = f"🏆 **ПОБЕДИЛ: {p2['title']}!**"
+            result = "lose"
+
+    log_text += f"\n{winner_text}"
+    try:
+        await call.message.edit_text(log_text, parse_mode="Markdown")
+    except Exception:
+        pass
+
+    update_stats(call.from_user.id, call.from_user.first_name or "Игрок", result)
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔄 Сразиться снова", callback_data="again")
+    kb.adjust(1)
+    try:
+        await call.message.edit_reply_markup(reply_markup=kb.as_markup())
+    except Exception:
+        pass
+    await call.answer()
+
+
+@dp.callback_query(lambda c: c.data == "again")
+async def again_action(call: types.CallbackQuery):
+    await start_cmd(call.message)
+    await call.answer()
+
+
+async def set_commands():
+    commands = [
+        BotCommand(command="start", description="Начать бой"),
+        BotCommand(command="chicken", description="Мой петух"),
+        BotCommand(command="shop", description="Магазин петухов"),
+        BotCommand(command="duel", description="Вызвать игрока (в группе, ответом)"),
+        BotCommand(command="profile", description="Профиль"),
+        BotCommand(command="top", description="Топ игроков"),
+    ]
+    await bot.set_my_commands(commands)
+
+
+async def main():
+    await bot.delete_webhook(drop_pending_updates=True)
+    await set_commands()
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
