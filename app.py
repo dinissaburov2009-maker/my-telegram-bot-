@@ -222,12 +222,11 @@ def make_hit(att, dfn, all_fighters):
         lines.append(f"🌀 {dfn['title']} увернулся!")
         return lines
 
-    # Сирена: 28% очаровать врага — удар лечит её вместо урона
     if dfn.get("key") == "сирена" and random.random() < 0.28:
-            heal = random.randint(att["dmg"][0], att["dmg"][1])
-            dfn["cur_hp"] = min(dfn["hp"], dfn["cur_hp"] + heal)
-            lines.append(f"💖 СИРЕНА ОЧАРОВАЛА {att['title']}! Удар превратился в лечение (+{heal} HP)!")
-    return lines
+        heal = random.randint(att["dmg"][0], att["dmg"][1])
+        dfn["cur_hp"] = min(dfn["hp"], dfn["cur_hp"] + heal)
+        lines.append(f"💖 СИРЕНА ОЧАРОВАЛА {att['title']}! Удар превратился в лечение (+{heal} HP)!")
+        return lines
 
     dmg = random.randint(att["dmg"][0], att["dmg"][1])
 
@@ -285,19 +284,20 @@ def make_hit(att, dfn, all_fighters):
         lines.append(f"💚 Губка регенерировала +2 HP!")
 
     att["hits"] = att.get("hits", 0) + 1
+
     if att.get("key") == "каратель" and att["hits"] % 2 == 0:
         dfn["cur_hp"] -= 5
         lines.append(f"💣 МЕТКА КАРАТЕЛЯ СДЕТОНИРОВАЛА! -5 HP!")
-# Бомбардир: каждые 2 попадания — АВИАУДАР
-if att.get("key") == "бомбардир" and att["hits"] % 2 == 0:
-    dfn["cur_hp"] -= 7
-    dfn["cur_hp"] -= 2
-    lines.append(f"✈️ АВИАУДАР БОМБАРДИРА! −7 цели и −2 осколками!")
 
-# Рой: каждые 2 удара — OVERRUN
-if att.get("key") == "рой" and att["hits"] % 2 == 0:
-    dfn["cur_hp"] -= 5
-    lines.append(f"🚁 OVERRUN РОЯ! Сквозь щит и додж, +5 урона!")
+    if att.get("key") == "бомбардир" and att["hits"] % 2 == 0:
+        dfn["cur_hp"] -= 7
+        dfn["cur_hp"] -= 2
+        lines.append(f"✈️ АВИАУДАР БОМБАРДИРА! −7 цели и −2 осколками!")
+
+    if att.get("key") == "рой" and att["hits"] % 2 == 0:
+        dfn["cur_hp"] -= 5
+        lines.append(f"🚁 OVERRUN РОЯ! Сквозь щит и додж, +5 урона!")
+
     if random.random() < 0.10:
         lines.append(f"   {random.choice(COMMENTATOR)}")
 
