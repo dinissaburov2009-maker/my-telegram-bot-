@@ -4,6 +4,7 @@ import random
 import json
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram.types import BotCommand
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # -------------------------------------------------------------
@@ -12,22 +13,28 @@ TOKEN = os.environ.get('BOT_TOKEN')
 
 DATA_FILE = "/data/players.json"
 
+# --- Все курицы с тирами (тир скрыт от игрока) ---
 BREEDS = {
-    "феникс":   {"title": "Феникс",   "class": "Универсал", "hp": 13, "dmg": (3, 5), "crit": 0.18, "dodge": 0.10},
-    "каратель": {"title": "Каратель", "class": "Дамагер",   "hp": 12, "dmg": (4, 7), "crit": 0.20, "dodge": 0.10},
-    "губка":    {"title": "Губка",    "class": "Танк",      "hp": 18, "dmg": (2, 4), "crit": 0.10, "dodge": 0.06},
-    "вампир":   {"title": "Вампир",   "class": "Хилер",     "hp": 14, "dmg": (3, 5), "crit": 0.17, "dodge": 0.09},
-    "бомба":    {"title": "Бомба",    "class": "Дамагер",   "hp": 10, "dmg": (5, 8), "crit": 0.16, "dodge": 0.08},
-    "дракон":   {"title": "Дракон",   "class": "Дамагер",   "hp": 13, "dmg": (3, 6), "crit": 0.18, "dodge": 0.08},
-    "голем":    {"title": "Голем",    "class": "Танк",      "hp": 20, "dmg": (2, 3), "crit": 0.05, "dodge": 0.04},
-    "призрак":  {"title": "Призрак",  "class": "Универсал", "hp": 11, "dmg": (4, 6), "crit": 0.20, "dodge": 0.30},
+    "обычная":  {"title": "Обычная",  "tier": "C", "hp": 15, "dmg": (2, 4), "crit": 0.10, "dodge": 0.05},
+    "драчун":   {"title": "Драчун",   "tier": "C", "hp": 18, "dmg": (4, 7), "crit": 0.15, "dodge": 0.08},
+    "бомба":    {"title": "Бомба",    "tier": "B", "hp": 15, "dmg": (5, 8), "crit": 0.16, "dodge": 0.08},
+    "призрак":  {"title": "Призрак",  "tier": "B", "hp": 17, "dmg": (4, 6), "crit": 0.20, "dodge": 0.30},
+    "вампир":   {"title": "Вампир",   "tier": "B", "hp": 22, "dmg": (3, 5), "crit": 0.17, "dodge": 0.09},
+    "феникс":   {"title": "Феникс",   "tier": "A", "hp": 20, "dmg": (3, 5), "crit": 0.18, "dodge": 0.10},
+    "дракон":   {"title": "Дракон",   "tier": "A", "hp": 20, "dmg": (3, 6), "crit": 0.18, "dodge": 0.08},
+    "голем":    {"title": "Голем",    "tier": "S", "hp": 28, "dmg": (2, 3), "crit": 0.05, "dodge": 0.04},
+    "губка":    {"title": "Губка",    "tier": "S", "hp": 26, "dmg": (2, 4), "crit": 0.10, "dodge": 0.06},
 }
+
+TIER_CHANCES = {"C": 40, "B": 30, "A": 20, "S": 10}
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 
-# --- Статистика ---
+# =============================================================
+# СТАТИСТИКА
+# =============================================================
 def load_players():
     if not os.path.exists(DATA_FILE):
         return {}
@@ -52,54 +59,55 @@ def get_player(user_id, username):
     uid = str(user_id)
     if uid not in players:
         players[uid] = {
-            "name": username,
-            "total": 0,
-            "wins": 0,
-            "loses": 0,
-            "draws": 0,
-            "coins": 500,
-            "breeds": {}
+            "name": username, "total": 0, "wins": 0, "loses": 0,
+            "coins": 500, "chicken": None,
         }
         save_players(players)
-    return players[uid]
+    p = players[uid]
+    if "coins" not in p:
+        p["coins"] = 500
+    if "chicken" not in p:
+        p["chicken"] = None
+    return p
 
 
-def update_stats(user_id, username, breed_key, result):
+def save_player(user_id, data):
+    players = load_players()
+    players[str(user_id)] = data
+    save_players(players)
+
+
+def update_stats(user_id, username, result):
     players = load_players()
     uid = str(user_id)
-
     if uid not in players:
         players[uid] = {
             "name": username, "total": 0, "wins": 0, "loses": 0,
-            "draws": 0, "coins": 500, "breeds": {}
+            "coins": 500, "chicken": None,
         }
-
     p = players[uid]
     p["name"] = username
     p["total"] += 1
 
-    # Защита старых записей
     if "coins" not in p:
         p["coins"] = 500
-    if "breeds" not in p:
-        p["breeds"] = {}
+    if "chicken" not in p:
+        p["chicken"] = None
 
     if result == "win":
         p["wins"] += 1
         p["coins"] += 100
-    elif result == "lose":
+    else:
         p["loses"] += 1
         p["coins"] = max(0, p["coins"] - 50)
-    else:
-        p["draws"] += 1
-        p["coins"] += 50
-
-    p["breeds"][breed_key] = p["breeds"].get(breed_key, 0) + 1
+        p["chicken"] = None
 
     save_players(players)
 
 
-# --- Атмосфера ---
+# =============================================================
+# АТМОСФЕРА
+# =============================================================
 EVENTS = [
     "🐔 Петух разъярён! Следующий удар может быть сильнее.",
     "😤 Противник в ярости!",
@@ -121,17 +129,17 @@ COMMENTATOR = [
 VERBS = ["атаковал", "врезал", "ударил", "набросился на", "заехал по клюву"]
 
 
-# --- Один удар ---
+# =============================================================
+# МЕХАНИКА УДАРОВ
+# =============================================================
 def make_hit(att, dfn):
     lines = []
 
-    # Оглушение — пропуск хода
     if att.get("stunned", 0) > 0:
         att["stunned"] -= 1
         lines.append(f"😵 {att['title']} оглушён и пропускает ход!")
         return lines
 
-    # Кровотечение
     if att.get("bleed", 0) > 0:
         att["cur_hp"] -= 2
         att["bleed"] -= 1
@@ -140,32 +148,28 @@ def make_hit(att, dfn):
     if att["cur_hp"] <= 0:
         return lines
 
-    # Уклонение
     if random.random() < dfn["dodge"]:
         lines.append(f"🌀 {dfn['title']} увернулся!")
         return lines
 
     dmg = random.randint(att["dmg"][0], att["dmg"][1])
 
-    # Броня Голема
-    if dfn["key"] == "голем":
+    if dfn.get("key") == "голем":
         dmg = max(1, dmg - 2)
         lines.append(f"🛡️ Броня Голема поглотила 2 урона.")
 
-    # Ярость
     rage = False
-    if att["cur_hp"] / att["hp"] < 0.3:
+    if att["cur_hp"] / att["hp"] < 0.3 and not att.get("raged"):
+        att["raged"] = True
         dmg = int(dmg * 1.5)
         rage = True
 
-    # Крит
     is_crit = random.random() < att["crit"]
     if is_crit:
         dmg = int(dmg * 1.5)
 
-    # Огненное дыхание Дракона
     fire = False
-    if att["key"] == "дракон" and random.random() < 0.15:
+    if att.get("key") == "дракон" and random.random() < 0.15:
         dmg *= 2
         fire = True
 
@@ -183,54 +187,45 @@ def make_hit(att, dfn):
 
     lines.append(f"   У {dfn['title']} осталось: {max(0, dfn['cur_hp'])} HP")
 
-    # Кровотечение от крита
     if is_crit:
         dfn["bleed"] = 2
         lines.append(f"🩸 {dfn['title']} начинает кровоточить!")
 
-    # Оглушение от крита
     if is_crit and random.random() < 0.5:
         dfn["stunned"] = 1
         lines.append(f"😵 {dfn['title']} оглушён!")
 
-    # Вампиризм
-    if att["key"] == "вампир" and dmg > 0:
+    if att.get("key") == "вампир" and dmg > 0:
         heal = max(1, int(dmg * 0.25))
         att["cur_hp"] = min(att["hp"], att["cur_hp"] + heal)
         lines.append(f"🩸 Вампир восстановил +{heal} HP!")
 
-    # Регенерация Губки
-    if att["key"] == "губка":
+    if att.get("key") == "губка":
         att["cur_hp"] = min(att["hp"], att["cur_hp"] + 2)
         lines.append(f"💚 Губка регенерировала +2 HP!")
 
-    # Метка Карателя
-    att["hits"] += 1
-    if att["key"] == "каратель" and att["hits"] % 2 == 0:
-        dfn["cur_hp"] -= 12
-        lines.append(f"💣 МЕТКА КАРАТЕЛЯ СДЕТОНИРОВАЛА! -12 HP!")
+    att["hits"] = att.get("hits", 0) + 1
+    if att.get("key") == "каратель" and att["hits"] % 2 == 0:
+        dfn["cur_hp"] -= 5
+        lines.append(f"💣 МЕТКА КАРАТЕЛЯ СДЕТОНИРОВАЛА! -5 HP!")
 
-    # Случайное событие
     if random.random() < 0.15:
         lines.append(f"   {random.choice(EVENTS)}")
-
-    # Комментатор
     if random.random() < 0.10:
         lines.append(f"   {random.choice(COMMENTATOR)}")
 
     return lines
 
 
-# --- Проверка смерти ---
 def check_death(dfn, att):
     lines = []
-    if dfn["cur_hp"] <= 0 and dfn["key"] == "феникс" and not dfn["revived"]:
+    if dfn["cur_hp"] <= 0 and dfn.get("key") == "феникс" and not dfn.get("revived"):
         dfn["revived"] = True
         dfn["cur_hp"] = 6
         lines.append(f"🔥 ФЕНИКС ВОСКРЕС С 6 HP!")
         return lines, False
 
-    if dfn["cur_hp"] <= 0 and dfn["key"] == "бомба" and not dfn.get("exploded"):
+    if dfn["cur_hp"] <= 0 and dfn.get("key") == "бомба" and not dfn.get("exploded"):
         dfn["exploded"] = True
         att["cur_hp"] -= 6
         lines.append(f"💥 БОМБА ВЗОРВАЛАСЬ! -6 HP врагу!")
@@ -239,7 +234,6 @@ def check_death(dfn, att):
     return lines, dfn["cur_hp"] <= 0
 
 
-# --- Обрезка лога ---
 def trim_log(log_text, max_len=3800):
     if len(log_text) <= max_len:
         return log_text
@@ -254,29 +248,35 @@ def trim_log(log_text, max_len=3800):
     return "...(лог сокращён)...\n" + "\n".join(result)
 
 
-# --- Бой ---
+# =============================================================
+# БОЙ
+# =============================================================
 async def run_fight_visual(message, p1_key, p2_key):
-    p1 = {**BREEDS[p1_key], "key": p1_key, "cur_hp": BREEDS[p1_key]["hp"], "hits": 0,
-          "revived": False, "exploded": False, "bleed": 0, "stunned": 0}
-    p2 = {**BREEDS[p2_key], "key": p2_key, "cur_hp": BREEDS[p2_key]["hp"], "hits": 0,
-          "revived": False, "exploded": False, "bleed": 0, "stunned": 0}
+    b1 = BREEDS[p1_key]
+    b2 = BREEDS[p2_key]
+    p1 = {**b1, "key": p1_key, "cur_hp": b1["hp"], "hits": 0,
+          "revived": False, "exploded": False, "bleed": 0, "stunned": 0, "raged": False}
+    p2 = {**b2, "key": p2_key, "cur_hp": b2["hp"], "hits": 0,
+          "revived": False, "exploded": False, "bleed": 0, "stunned": 0, "raged": False}
 
     log_text = (
         f"⚔️ **БОЙ НАЧАЛСЯ!**\n"
         f"Твой боец: **{p1['title']}** ({p1['hp']} HP)\n"
         f"Противник: **{p2['title']}** ({p2['hp']} HP)\n\n"
     )
-    await message.edit_text(log_text, parse_mode="Markdown")
+    try:
+        await message.edit_text(log_text, parse_mode="Markdown")
+    except Exception:
+        pass
 
-    for _ in range(15):
+    for _ in range(50):
         for att, dfn in [(p1, p2), (p2, p1)]:
-            if att["cur_hp"] <= 0:
+            if att["cur_hp"] <= 0 or dfn["cur_hp"] <= 0:
                 continue
 
             hit_lines = make_hit(att, dfn)
             log_text += "\n".join(hit_lines) + "\n"
 
-            # Комбо
             if random.random() < 0.10 and att["cur_hp"] > 0 and dfn["cur_hp"] > 0:
                 log_text += f"⚡ ДВОЙНОЙ УДАР! {att['title']} бьёт снова!\n"
                 combo_lines = make_hit(att, dfn)
@@ -293,22 +293,35 @@ async def run_fight_visual(message, p1_key, p2_key):
                 pass
             await asyncio.sleep(1.2)
 
-            if is_dead or p1["cur_hp"] <= 0 or p2["cur_hp"] <= 0:
+            if is_dead or att["cur_hp"] <= 0 or dfn["cur_hp"] <= 0:
                 break
 
         if p1["cur_hp"] <= 0 or p2["cur_hp"] <= 0:
             break
 
-    # Итог
-    if p1["cur_hp"] > 0 and p2["cur_hp"] <= 0:
+    p1_alive = p1["cur_hp"] > 0
+    p2_alive = p2["cur_hp"] > 0
+
+    if p1_alive and not p2_alive:
         winner_text = f"🏆 **ПОБЕДИЛ: {p1['title']}!**"
         result = "win"
-    elif p2["cur_hp"] > 0 and p1["cur_hp"] <= 0:
+    elif p2_alive and not p1_alive:
         winner_text = f"🏆 **ПОБЕДИЛ: {p2['title']}!**"
         result = "lose"
+    elif not p1_alive and not p2_alive:
+        if p1["cur_hp"] >= p2["cur_hp"]:
+            winner_text = f"🏆 **ПОБЕДИЛ: {p1['title']}!**"
+            result = "win"
+        else:
+            winner_text = f"🏆 **ПОБЕДИЛ: {p2['title']}!**"
+            result = "lose"
     else:
-        winner_text = "🤝 **НИЧЬЯ! Бой затянулся.**"
-        result = "draw"
+        if p1["cur_hp"] >= p2["cur_hp"]:
+            winner_text = f"🏆 **ПОБЕДИЛ: {p1['title']}!**"
+            result = "win"
+        else:
+            winner_text = f"🏆 **ПОБЕДИЛ: {p2['title']}!**"
+            result = "lose"
 
     log_text += f"\n{winner_text}"
     try:
@@ -319,55 +332,168 @@ async def run_fight_visual(message, p1_key, p2_key):
     return result
 
 
-# --- Клавиатура петухов ---
-def breeds_keyboard():
-    kb = InlineKeyboardBuilder()
-    for key, data in BREEDS.items():
-        kb.button(
-            text=f"{data['title']} ({data['class']}, {data['hp']} HP)",
-            callback_data=f"fight:{key}"
-        )
-    kb.adjust(1)
-    return kb.as_markup()
+# =============================================================
+# МАГАЗИН
+# =============================================================
+def roll_random_chicken():
+    roll = random.randint(1, 100)
+    if roll <= TIER_CHANCES["C"]:
+        pool = [k for k, v in BREEDS.items() if v["tier"] == "C"]
+    elif roll <= TIER_CHANCES["C"] + TIER_CHANCES["B"]:
+        pool = [k for k, v in BREEDS.items() if v["tier"] == "B"]
+    elif roll <= TIER_CHANCES["C"] + TIER_CHANCES["B"] + TIER_CHANCES["A"]:
+        pool = [k for k, v in BREEDS.items() if v["tier"] == "A"]
+    else:
+        pool = [k for k, v in BREEDS.items() if v["tier"] == "S"]
+    return random.choice(pool)
 
 
-# --- /start ---
+# =============================================================
+# КОМАНДЫ
+# =============================================================
 @dp.message(Command("start"))
 async def start_cmd(msg: types.Message):
-    get_player(msg.from_user.id, msg.from_user.first_name or "Игрок")
+    p = get_player(msg.from_user.id, msg.from_user.first_name or "Игрок")
+
+    if not p.get("chicken"):
+        await msg.answer(
+            "🐔 **Петушиные бои**\n\n"
+            "У тебя нет петуха. Купи его в магазине: /shop",
+            parse_mode="Markdown"
+        )
+        return
+
+    breed = BREEDS[p["chicken"]]
+    kb = InlineKeyboardBuilder()
+    kb.button(
+        text=f"⚔️ В бой: {breed['title']} ({breed['hp']} HP)",
+        callback_data=f"fight:{p['chicken']}"
+    )
+    kb.adjust(1)
     await msg.answer(
-        "🐔 **Петушиные бои**\n\nВыбери своего бойца для дуэли:",
-        reply_markup=breeds_keyboard(),
+        f"🐔 **Петушиные бои**\n\n"
+        f"Твой петух: **{breed['title']}**\n"
+        f"HP: {breed['hp']}\n\n"
+        f"Отправляй его в бой!",
+        reply_markup=kb.as_markup(),
         parse_mode="Markdown"
     )
 
 
-# --- /profile ---
+@dp.message(Command("chicken"))
+async def chicken_cmd(msg: types.Message):
+    p = get_player(msg.from_user.id, msg.from_user.first_name or "Игрок")
+
+    if not p.get("chicken"):
+        await msg.answer("🐔 У тебя нет петуха. Купи в /shop")
+        return
+
+    breed = BREEDS[p["chicken"]]
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🍲 Пустить на суп (+100 монет)", callback_data="soup")
+    kb.adjust(1)
+
+    await msg.answer(
+        f"🐔 **Твой петух:**\n\n"
+        f"**{breed['title']}**\n"
+        f"HP: {breed['hp']}\n"
+        f"Урон: {breed['dmg'][0]}–{breed['dmg'][1]}\n"
+        f"Крит: {int(breed['crit']*100)}%\n"
+        f"Уклонение: {int(breed['dodge']*100)}%",
+        reply_markup=kb.as_markup(),
+        parse_mode="Markdown"
+    )
+
+
+@dp.callback_query(lambda c: c.data == "soup")
+async def soup_action(call: types.CallbackQuery):
+    p = get_player(call.from_user.id, call.from_user.first_name or "Игрок")
+    if not p.get("chicken"):
+        await call.answer("У тебя нет петуха.", show_alert=True)
+        return
+
+    p["chicken"] = None
+    p["coins"] += 100
+    save_player(call.from_user.id, p)
+
+    await call.message.edit_text("🍲 Ты пустил петуха на суп и получил 100 монет.")
+    await call.answer()
+
+
+@dp.message(Command("shop"))
+async def shop_cmd(msg: types.Message):
+    p = get_player(msg.from_user.id, msg.from_user.first_name or "Игрок")
+
+    if p.get("chicken"):
+        await msg.answer("🛒 У тебя уже есть петух. Сначала продай его командой /chicken")
+        return
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🎲 Купить петуха за 50 монет", callback_data="buy")
+    kb.adjust(1)
+
+    await msg.answer(
+        f"🛒 **Магазин петухов**\n\n"
+        f"💰 У тебя: **{p['coins']} монет**\n\n"
+        f"За 50 монет ты получишь **случайного** петуха.\n"
+        f"Шансы разные — от обычных до легендарных.",
+        reply_markup=kb.as_markup(),
+        parse_mode="Markdown"
+    )
+
+
+@dp.callback_query(lambda c: c.data == "buy")
+async def buy_action(call: types.CallbackQuery):
+    p = get_player(call.from_user.id, call.from_user.first_name or "Игрок")
+
+    if p.get("chicken"):
+        await call.answer("У тебя уже есть петух!", show_alert=True)
+        return
+
+    if p["coins"] < 50:
+        await call.answer("Недостаточно монет!", show_alert=True)
+        return
+
+    key = roll_random_chicken()
+    p["coins"] -= 50
+    p["chicken"] = key
+    save_player(call.from_user.id, p)
+
+    breed = BREEDS[key]
+    await call.message.edit_text(
+        f"🎉 **Тебе выпал петух: {breed['title']}!**\n\n"
+        f"HP: {breed['hp']}\n"
+        f"Урон: {breed['dmg'][0]}–{breed['dmg'][1]}\n"
+        f"Крит: {int(breed['crit']*100)}%\n"
+        f"Уклонение: {int(breed['dodge']*100)}%\n\n"
+        f"Проверь его: /chicken",
+        parse_mode="Markdown"
+    )
+    await call.answer()
+
+
 @dp.message(Command("profile"))
 async def profile_cmd(msg: types.Message):
     p = get_player(msg.from_user.id, msg.from_user.first_name or "Игрок")
     total = p["total"]
     winrate = round(p["wins"] / total * 100, 1) if total > 0 else 0
-    favorite = "нет"
-    if p.get("breeds"):
-        fav_key = max(p["breeds"], key=p["breeds"].get)
-        favorite = BREEDS[fav_key]["title"]
 
-    coins = p.get("coins", 500)
+    chicken_name = "нет"
+    if p.get("chicken"):
+        chicken_name = BREEDS[p["chicken"]]["title"]
+
     text = (
         f"📊 **Профиль: {p['name']}**\n\n"
-        f"💰 Монеты: **{coins}**\n"
+        f"💰 Монеты: **{p['coins']}**\n"
+        f"🐔 Петух: **{chicken_name}**\n"
         f"Всего боёв: **{total}**\n"
         f"Побед: **{p['wins']}** ✅\n"
         f"Поражений: **{p['loses']}** ❌\n"
-        f"Ничьих: **{p['draws']}** 🤝\n"
-        f"Процент побед: **{winrate}%**\n"
-        f"Любимый петух: **{favorite}**"
+        f"Процент побед: **{winrate}%**"
     )
     await msg.answer(text, parse_mode="Markdown")
 
 
-# --- /top ---
 @dp.message(Command("top"))
 async def top_cmd(msg: types.Message):
     players = load_players()
@@ -385,24 +511,28 @@ async def top_cmd(msg: types.Message):
     await msg.answer(text, parse_mode="Markdown")
 
 
-# --- Бой ---
+# =============================================================
+# БОЙ
+# =============================================================
 @dp.callback_query(lambda c: c.data.startswith("fight:"))
 async def fight_action(call: types.CallbackQuery):
+    p = get_player(call.from_user.id, call.from_user.first_name or "Игрок")
     my_pick = call.data.split(":")[1]
+
+    if p.get("chicken") != my_pick:
+        await call.answer("Это не твой петух!", show_alert=True)
+        return
+
     enemy_pick = random.choice(list(BREEDS.keys()))
 
     await call.message.edit_text("⏳ *Бой начинается...*", parse_mode="Markdown")
     result = await run_fight_visual(call.message, my_pick, enemy_pick)
 
-    update_stats(
-        call.from_user.id,
-        call.from_user.first_name or "Игрок",
-        my_pick,
-        result
-    )
+    update_stats(call.from_user.id, call.from_user.first_name or "Игрок", result)
 
     kb = InlineKeyboardBuilder()
     kb.button(text="🔄 Сразиться снова", callback_data="again")
+    kb.adjust(1)
     try:
         await call.message.edit_reply_markup(reply_markup=kb.as_markup())
     except Exception:
@@ -412,19 +542,27 @@ async def fight_action(call: types.CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "again")
 async def again_action(call: types.CallbackQuery):
-    try:
-        await call.message.edit_text(
-            "🐔 **Петушиные бои**\n\nВыбери своего бойца для дуэли:",
-            reply_markup=breeds_keyboard(),
-            parse_mode="Markdown"
-        )
-    except Exception:
-        pass
+    await start_cmd(call.message)
     await call.answer()
+
+
+# =============================================================
+# ЗАПУСК
+# =============================================================
+async def set_commands():
+    commands = [
+        BotCommand(command="start", description="Начать бой"),
+        BotCommand(command="chicken", description="Мой петух"),
+        BotCommand(command="shop", description="Магазин петухов"),
+        BotCommand(command="profile", description="Профиль"),
+        BotCommand(command="top", description="Топ игроков"),
+    ]
+    await bot.set_my_commands(commands)
 
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
+    await set_commands()
     await dp.start_polling(bot)
 
 
