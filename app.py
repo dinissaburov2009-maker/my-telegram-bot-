@@ -30,7 +30,7 @@ BREEDS = {
     "хронос":     {"title": "Хронос",     "tier": "S", "hp": 15, "dmg": (3, 6), "crit": 0.20, "dodge": 0.12},
 }
 
-TIER_CHANCES = {"C": 40, "B": 30, "A": 20, "S": 10}
+TIER_CHANCES = {"C": 35, "B": 30, "A": 25, "S": 10}
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
