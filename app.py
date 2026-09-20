@@ -591,11 +591,12 @@ async def duel_cmd(msg: types.Message):
         await msg.reply("❌ У тебя нет петуха. Купи в /shop (в личке).")
         return
 
-    if not msg.reply_to_message or not msg.reply_to_message.from_user:
+    target = None
+    if msg.reply_to_message and msg.reply_to_message.from_user:
+        target = msg.reply_to_message.from_user
+    else:
         await msg.reply("❌ Ответь на сообщение игрока командой /duel, чтобы вызвать его.")
         return
-
-    target = msg.reply_to_message.from_user
 
     if target.id == caller.id:
         await msg.reply("❌ Нельзя вызвать самого себя!")
@@ -605,13 +606,13 @@ async def duel_cmd(msg: types.Message):
         await msg.reply("❌ Нельзя вызвать бота!")
         return
 
-        target_p = get_player(target.id, target.first_name or "Игрок")
+    target_p = get_player(target.id, target.first_name or "Игрок")
     if not target_p.get("chicken"):
         await msg.reply(f"❌ У {target.first_name} нет петуха.")
         return
 
-    for duel_id, duel in list(ACTIVE_DUELS.items()):
-        if duel["caller_id"] == caller.id:
+    for duel_id_check, duel_check in list(ACTIVE_DUELS.items()):
+        if duel_check["caller_id"] == caller.id:
             await msg.reply("❌ У тебя уже есть активный вызов.")
             return
 
@@ -639,6 +640,7 @@ async def duel_cmd(msg: types.Message):
         reply_markup=kb.as_markup(),
         parse_mode="Markdown"
     )
+
 
     ACTIVE_DUELS[duel_id]["msg_id"] = duel_msg.message_id
 
