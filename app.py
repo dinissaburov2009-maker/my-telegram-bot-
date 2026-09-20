@@ -222,12 +222,12 @@ def make_hit(att, dfn, all_fighters):
         lines.append(f"🌀 {dfn['title']} увернулся!")
         return lines
 
-    # Сирена: 28% очаровать врага — удар лечит её вместо урона   ← НОВОЕ
-    if dfn.get("key") == "сирена" and random.random() < 0.28:      ← НОВОЕ
-            heal = random.randint(att["dmg"][0], att["dmg"][1])        ← НОВОЕ
-            dfn["cur_hp"] = min(dfn["hp"], dfn["cur_hp"] + heal)       ← НОВОЕ
-            lines.append(f"💖 СИРЕНА ОЧАРОВАЛА {att['title']}! Удар превратился в лечение (+{heal} HP)!")   ← НОВОЕ
-    return lines                                               ← НОВОЕ
+    # Сирена: 28% очаровать врага — удар лечит её вместо урона
+    if dfn.get("key") == "сирена" and random.random() < 0.28:
+            heal = random.randint(att["dmg"][0], att["dmg"][1])
+            dfn["cur_hp"] = min(dfn["hp"], dfn["cur_hp"] + heal)
+            lines.append(f"💖 СИРЕНА ОЧАРОВАЛА {att['title']}! Удар превратился в лечение (+{heal} HP)!")
+    return lines
 
     dmg = random.randint(att["dmg"][0], att["dmg"][1])
 
